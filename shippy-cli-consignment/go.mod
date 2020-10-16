@@ -4,12 +4,10 @@ go 1.15
 
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
 
-replace github.com/days85/shippy/shippy-service-consignment => /Users/nunodias/dev/go/code/src/github.com/days85/shippy/shippy-service-consignment
-
 require (
 	github.com/coreos/etcd v3.3.25+incompatible // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
-	github.com/days85/shippy/shippy-service-consignment v0.0.0-00010101000000-000000000000
+	github.com/days85/shippy/shippy-service-consignment v0.0.0-20201016142810-f0d94c0e4702
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-git/go-git/v5 v5.2.0 // indirect

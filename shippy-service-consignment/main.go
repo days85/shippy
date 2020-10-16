@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/days85/shippy/shippy-service-vessel/proto/vessel"
 	"github.com/micro/go-micro/v2"
 
 	pb "github.com/days85/shippy/shippy-service-consignment/proto/consignment"
@@ -37,13 +38,30 @@ func (r *Repository) GetAll() []*pb.Consignment {
 // in the generated code itself for the exact method signatures etc
 // to give you a better idea.
 type consignmentService struct {
-	repo repository
+	repo         repository
+	vesselClient vessel.VesselService
 }
 
 // CreateConsignment - we created just one method on our service,
 // which is a create method, which takes a context and a request as an
 // argument, these are handled by the gRPC server.
 func (s *consignmentService) CreateConsignment(_ context.Context, req *pb.Consignment, res *pb.Response) error {
+
+	// Here we call a client instance of our vessel service with our consignment weight,
+	// and the amount of containers as the capacity value
+	vesselResponse, err := s.vesselClient.FindAvailable(context.Background(), &vesselProto.Specification{
+		MaxWeight: req.Weight,
+		Capacity:  int32(len(req.Containers)),
+	})
+	log.Printf("Found vessel: %s \n", vesselResponse.Vessel.Name)
+	if err != nil {
+		return err
+	}
+
+	// We set the VesselId as the vessel we got back from our
+	// vessel service
+	req.VesselId = vesselResponse.Vessel.Id
+
 	// Save our consignment
 	consignment, err := s.repo.Create(req)
 	if err != nil {
