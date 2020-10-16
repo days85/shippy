@@ -49,14 +49,15 @@ func (s *consignmentService) CreateConsignment(_ context.Context, req *pb.Consig
 
 	// Here we call a client instance of our vessel service with our consignment weight,
 	// and the amount of containers as the capacity value
-	vesselResponse, err := s.vesselClient.FindAvailable(context.Background(), &vesselProto.Specification{
+	vesselResponse, err := s.vesselClient.FindAvailable(context.Background(), &vessel.Specification{
 		MaxWeight: req.Weight,
 		Capacity:  int32(len(req.Containers)),
 	})
-	log.Printf("Found vessel: %s \n", vesselResponse.Vessel.Name)
 	if err != nil {
 		return err
 	}
+
+	log.Printf("Found vessel: %s \n", vesselResponse.Vessel.Name)
 
 	// We set the VesselId as the vessel we got back from our
 	// vessel service
@@ -94,7 +95,12 @@ func main() {
 	// Init will parse the command line flags.
 	service.Init()
 
-	if err := pb.RegisterShippingServiceHandler(service.Server(), &consignmentService{repo}); err != nil {
+	vesselClient := vessel.NewVesselService("shippy.service.vessel", service.Client())
+
+	if err := pb.RegisterShippingServiceHandler(
+		service.Server(),
+		&consignmentService{repo, vesselClient},
+	); err != nil {
 		log.Panic(err)
 	}
 
