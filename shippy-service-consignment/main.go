@@ -2,90 +2,21 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
 
-	"github.com/days85/shippy/shippy-service-vessel/proto/vessel"
+	vesselpb "github.com/days85/shippy/shippy-service-vessel/proto/vessel"
 	"github.com/micro/go-micro/v2"
 
-	pb "github.com/days85/shippy/shippy-service-consignment/proto/consignment"
+	consignmentpb "github.com/days85/shippy/shippy-service-consignment/proto/consignment"
 )
 
-type repository interface {
-	Create(*pb.Consignment) (*pb.Consignment, error)
-	GetAll() []*pb.Consignment
-}
-
-// Repository - Dummy repository, this simulates the use of a datastore
-// of some kind. We'll replace this with a real implementation later on.
-type Repository struct {
-	consignments []*pb.Consignment
-}
-
-// Create a new consignment
-func (r *Repository) Create(consignment *pb.Consignment) (*pb.Consignment, error) {
-	updated := append(r.consignments, consignment)
-	r.consignments = updated
-	return consignment, nil
-}
-
-// GetAll consignments
-func (r *Repository) GetAll() []*pb.Consignment {
-	return r.consignments
-}
-
-// Service should implement all of the methods to satisfy the service
-// we defined in our protobuf definition. You can check the interface
-// in the generated code itself for the exact method signatures etc
-// to give you a better idea.
-type consignmentService struct {
-	repo         repository
-	vesselClient vessel.VesselService
-}
-
-// CreateConsignment - we created just one method on our service,
-// which is a create method, which takes a context and a request as an
-// argument, these are handled by the gRPC server.
-func (s *consignmentService) CreateConsignment(_ context.Context, req *pb.Consignment, res *pb.Response) error {
-
-	// Here we call a client instance of our vessel service with our consignment weight,
-	// and the amount of containers as the capacity value
-	vesselResponse, err := s.vesselClient.FindAvailable(context.Background(), &vessel.Specification{
-		MaxWeight: req.Weight,
-		Capacity:  int32(len(req.Containers)),
-	})
-	if err != nil {
-		return err
-	}
-
-	log.Printf("Found vessel: %s \n", vesselResponse.Vessel.Name)
-
-	// We set the VesselId as the vessel we got back from our
-	// vessel service
-	req.VesselId = vesselResponse.Vessel.Id
-
-	// Save our consignment
-	consignment, err := s.repo.Create(req)
-	if err != nil {
-		return err
-	}
-
-	// Return matching the `Response` message we created in our
-	// protobuf definition.
-	res.Created = true
-	res.Consignment = consignment
-	return nil
-}
-
-// GetConsignments - Get all consignments
-func (s *consignmentService) GetConsignments(_ context.Context, _ *pb.GetRequest, res *pb.Response) error {
-	consignments := s.repo.GetAll()
-	res.Consignments = consignments
-	return nil
-}
+const (
+	defaultDBHost = "datastore:27017"
+)
 
 func main() {
-	repo := &Repository{}
-
 	// Create a new service. Optionally include some options here.
 	service := micro.NewService(
 		// This name must match the package name given in your protobuf definition
@@ -95,17 +26,28 @@ func main() {
 	// Init will parse the command line flags.
 	service.Init()
 
-	vesselClient := vessel.NewVesselService("shippy.service.vessel", service.Client())
+	uri := os.Getenv("DB_HOST")
+	if uri == "" {
+		uri = defaultDBHost
+	}
 
-	if err := pb.RegisterShippingServiceHandler(
-		service.Server(),
-		&consignmentService{repo, vesselClient},
-	); err != nil {
+	client, err := CreateClient(context.Background(), uri, 0)
+	if err != nil {
 		log.Panic(err)
 	}
+	defer client.Disconnect(context.Background())
+
+	consignmentCollection := client.Database("shippy").Collection("consignments")
+
+	repository := &MongoRepository{consignmentCollection}
+	vesselClient := vesselpb.NewVesselService("shippy.service.vessel", service.Client())
+	h := &handler{repository, vesselClient}
+
+	// Register handlers
+	_ = consignmentpb.RegisterShippingServiceHandler(service.Server(), h)
 
 	// Run the server
 	if err := service.Run(); err != nil {
-		log.Panic(err)
+		fmt.Println(err)
 	}
 }

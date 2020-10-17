@@ -2,74 +2,50 @@ package main
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/micro/go-micro/v2"
 
-	pb "github.com/days85/shippy/shippy-service-vessel/proto/vessel"
+	vesselpb "github.com/days85/shippy/shippy-service-vessel/proto/vessel"
 )
 
-type repository interface {
-	FindAvailable(*pb.Specification) (*pb.Vessel, error)
-}
-
-// Repository -
-type Repository struct {
-	vessels []*pb.Vessel
-}
-
-// FindAvailable - checks a specification against a map of vessels,
-// if capacity and max weight are below a vessels capacity and max weight,
-// then return that vessel.
-func (r *Repository) FindAvailable(spec *pb.Specification) (*pb.Vessel, error) {
-	for _, vessel := range r.vessels {
-		if spec.Capacity <= vessel.Capacity && spec.MaxWeight <= vessel.MaxWeight {
-			return vessel, nil
-		}
-	}
-	return nil, errors.New("no vessel found by that spec")
-}
-
-// Our grpc service handler
-type vesselService struct {
-	repo repository
-}
-
-// FindAvailable -
-func (s *vesselService) FindAvailable(ctx context.Context, req *pb.Specification, res *pb.Response) error {
-	// Find the next available vessel
-	vessel, err := s.repo.FindAvailable(req)
-	if err != nil {
-		return err
-	}
-
-	// Set the vessel as part of the response message type
-	res.Vessel = vessel
-	return nil
-}
+const (
+	defaultDBHost = "datastore:27017"
+)
 
 func main() {
-	vessels := []*pb.Vessel{
-		{
-			Id:        "vessel001",
-			Capacity:  500,
-			MaxWeight: 200000,
-			Name:      "Boaty McBoatface",
-		},
-	}
-	repo := &Repository{vessels}
-
+	// Create a new service. Optionally include some options here.
 	service := micro.NewService(
+		// This name must match the package name given in your protobuf definition
 		micro.Name("shippy.service.vessel"),
 	)
+
+	// Init will parse the command line flags.
 	service.Init()
 
-	// Register our implementation with
-	if err := pb.RegisterVesselServiceHandler(service.Server(), &vesselService{repo}); err != nil {
+	uri := os.Getenv("DB_HOST")
+	if uri == "" {
+		uri = defaultDBHost
+	}
+
+	client, err := CreateClient(context.Background(), uri, 0)
+	if err != nil {
 		log.Panic(err)
 	}
+	defer client.Disconnect(context.Background())
+
+	vesselCollection := client.Database("shippy").Collection("vessel")
+
+	repository := &MongoRepository{vesselCollection}
+	h := &handler{repository}
+
+	// Register handlers
+	_ = vesselpb.RegisterVesselServiceHandler(service.Server(), h)
+
+	// Run the server
 	if err := service.Run(); err != nil {
-		log.Panic(err)
+		fmt.Println(err)
 	}
 }

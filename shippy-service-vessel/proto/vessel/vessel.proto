@@ -3,6 +3,7 @@ syntax = "proto3";
 package vessel;
 
 service VesselService {
+  rpc Create(Vessel) returns (Response) {}
   rpc FindAvailable(Specification) returns (Response) {}
 }
 
@@ -21,6 +22,7 @@ message Specification {
 }
 
 message Response {
-  Vessel vessel = 1;
-  repeated Vessel vessels = 2;
+  bool created = 1;
+  Vessel vessel = 2;
+  repeated Vessel vessels = 3;
 }
